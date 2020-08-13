@@ -1,7 +1,7 @@
 /*
 * Private Death Match v0.1
 * Website: pawn-wiki.ru
-** В© Mavi, 2017 - 2020
+** © Mavi, 2017 - 2020
 * August, 2020
 */
 
@@ -15,25 +15,25 @@
 #include <colandreas>
 #include <3dtrug>
 
-#define TDW_DIALOG_SKIP_ARGS // Г¬ГҐГ±ГІГ® Г­ГҐ ГЇГ®Г¬ГҐГ­ГїГІГј, ГўГ±ГҐГЈГ¤Г  ГЇГҐГ°ГҐГ¤ Г§Г ГЈГ°ГіГ§ГЄГ®Г© tdw_dialog! 
+#define TDW_DIALOG_SKIP_ARGS // место не поменять, всегда перед загрузкой tdw_dialog! 
 #include <tdw_dialog>
 
 /* ####################### Defines ####################### */
 
 #define FILTERSCRIPT 
 
-#define MAX_LOCATIONS MAX_PLAYERS // ГЄГ®Г«-ГўГ® Г¬Г ГЄГ±. Г«Г®ГЄГ Г¶ГЁГ© (default = max players)
-#define MAX_LOCATION_PLAYERS (10) // ГЄГ®Г«-ГўГ® Г¬Г ГЄГ±. ГЁГЈГ°Г®ГЄГ®Гў Гў Г®Г¤Г­Г®Г© Г«Г®ГЄГ Г¶ГЁГЁ
+#define MAX_LOCATIONS MAX_PLAYERS // кол-во макс. локаций (default = max players)
+#define MAX_LOCATION_PLAYERS (10) // кол-во макс. игроков в одной локации
 
 /*
-* Г‡Г­Г Г·ГҐГ­ГЁГї ГЄГ®Г­Г±ГІГ Г­ГІГ®Гў Г­ГЁГ¦ГҐ,
-* Г¬ГҐГ­ГїГІГј ГІГ®Г«ГјГЄГ® ГІГ®ГЈГ¤Г , ГЄГ®ГЈГ¤Г  ГЎГіГ¤ГҐГІГҐ Г¤Г®ГЎГ ГўГ«ГїГІГј Г­Г®ГўГ»ГҐ ГЄГ Г°ГІГ» ГЁГ«ГЁ Г®Г°ГіГ¦ГЁГї
-* Г’ГҐГЄГіГ№ГҐГ¬Гі Г§Г­Г Г·ГҐГ­ГЁГѕ ГЇГ°ГЁГЎГ ГўГЁГІГј Г¤Г«ГЁГ­Г  ГўГ ГёГҐГЈГ® ГІГҐГЄГ±ГІГ 
+* Значения константов ниже,
+* менять только тогда, когда будете добавлять новые карты или оружия
+* Текущему значению прибавить длина вашего текста
 */
 #define MAP_DIALOG_STRING_LENGTH (44) 
 #define WEAPON_DIALOG_STRING_LENGTH (108)  
 
-// Г®Г·ГЁГ±ГІГЄГ  ГЄГЁГ«Г«-Г«ГЁГ±ГІГ  
+// очистка килл-листа 
 #define ClearDeathMessageToPlayer(%0) for(new f; f<6;f++) SendDeathMessageToPlayer(%0, 6000, 5005, 255)
 /* ###################################################### */
 
@@ -59,13 +59,14 @@ enum PLAYER_INFO_
 	pInterior,
 	bool:pInvite,
 	pInviteSender,
-	pTabClickID
+	pTabClickID,
+	pInviteTimer
 }
 new PlayerInfo[MAX_PLAYERS][PLAYER_INFO_];
 
 new Iterator: LocationPlayers[MAX_LOCATIONS]<MAX_PLAYERS>;
 
-new MapNames[][] = // Г­Г Г§ГўГ Г­ГЁГї ГЄГ Г°ГІ
+new MapNames[][] = // названия карт
 {
 	"Old Country",
 	"Ghetto Factory",
@@ -115,6 +116,7 @@ static const PLAYER_INFO_EOS[PLAYER_INFO_] =
 	0, 
 	false,
 	-1,
+	0,
 	0
 };
 
@@ -201,7 +203,7 @@ public OnPlayerDisconnect(playerid, reason)
 {
 	if(LocationInfo[playerid][lCreator] == playerid)
 	{
-		DeleteLocation(playerid, "Г‹Г®ГЄГ Г¶ГЁГї ГЎГ»Г«Г  ГіГ¤Г Г«ГҐГ­Г , Г±Г®Г§Г¤Г ГІГҐГ«Гј ГўГ»Г«ГҐГІГҐГ« ГЁГ§ ГЁГЈГ°Г».");
+		DeleteLocation(playerid, "Локация была удалена, создатель вылетел из игры.");
 	}
 	
 	foreach(new p : Player)
@@ -241,8 +243,8 @@ public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
 		if(newkeys & KEY_YES || newkeys & KEY_NO) 
 		{
 			{
-				static const fmt_msg[] = "%s {027D0E}ГЇГ°ГЁГ­ГїГ« Г‚Г ГёГҐ ГЇГ°ГЁГЈГ«Г ГёГҐГ­ГЁГҐ!";
-				static const fmt_msg2[] = "%s {BC2C2C}Г®ГІГЄГ Г§Г Г«Г±Гї Г®ГІ Г‚Г ГёГҐГЈГ® ГЇГ°ГЁГЈГ«Г ГёГҐГ­ГЁГї!";
+				static const fmt_msg[] = "%s {027D0E}принял Ваше приглашение!";
+				static const fmt_msg2[] = "%s {BC2C2C}отказался от Вашего приглашения!";
 
 				new name[MAX_PLAYER_NAME - 3], message[sizeof fmt_msg + MAX_PLAYER_NAME - 3];
 
@@ -253,8 +255,12 @@ public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
 
 			if(newkeys & KEY_YES) AddPlayerToLocation(playerid, PlayerInfo[playerid][pInviteSender]);
 
+			KillTimer(PlayerInfo[playerid][pInviteTimer]);
+			
 			PlayerInfo[playerid][pInvite] = false;
-			PlayerInfo[playerid][pInviteSender] = -1;
+			PlayerInfo[playerid][pInviteSender] = 
+			PlayerInfo[playerid][pInviteTimer] = -1;
+
 		}
 	}
 }
@@ -262,13 +268,13 @@ public OnPlayerKeyStateChange(playerid, newkeys, oldkeys)
 
 CMD:createpdm(playerid, params[]) 
 {
-	if(PlayerInfo[playerid][pLocation] != -1) return SendClientMessage(playerid, 0xACACACFF, !"Г‘Г­Г Г·Г Г«Г  ГЇГ®ГЄГЁГ­ГјГІГҐ ГІГҐГЄГіГ№ГіГѕ Г«Г®ГЄГ Г¶ГЁГѕ!");
+	if(PlayerInfo[playerid][pLocation] != -1) return SendClientMessage(playerid, 0xACACACFF, !"Сначала покиньте текущую локацию!");
 	return Dialog_Show(playerid, "SelectMap");
 }
 
 CMD:pexit(playerid, params[])
 {
-	if(!PlayerInfo[playerid][IsSpawnedInLoc]) return SendClientMessage(playerid, 0xACACACFF, !"Г‚Г» Г­ГҐ Гў Г«Г®ГЄГ Г¶ГЁГЁ!");
+	if(!PlayerInfo[playerid][IsSpawnedInLoc]) return SendClientMessage(playerid, 0xACACACFF, !"Вы не в локации!");
 
 	new loc = PlayerInfo[playerid][pLocation];
 	if(LocationInfo[loc][lCreator] != playerid)
@@ -276,7 +282,7 @@ CMD:pexit(playerid, params[])
 		Iter_Remove(LocationPlayers[loc], playerid);
 		RemovePlayerAtLocation(playerid);
 
-		SendClientMessage(playerid, 0x027D0EFF, !"Г‚Г» ГіГ±ГЇГҐГёГ­Г® ГЇГ®ГЄГЁГ­ГіГ«ГЁ Г Г°ГҐГ­Гі!");
+		SendClientMessage(playerid, 0x027D0EFF, !"Вы успешно покинули арену!");
 	}
 	else Dialog_Show(playerid, "LeaveLocation");
 
@@ -285,47 +291,49 @@ CMD:pexit(playerid, params[])
 
 CMD:pinvite(playerid, params[])
 {
-	if(LocationInfo[playerid][lCreator] != playerid) return SendClientMessage(playerid, 0xACACACFF, !"ГЌГҐГІ Г¤Г®Г±ГІГіГЇГ ");
-	if(Iter_Count(LocationPlayers[playerid]) >= MAX_LOCATION_PLAYERS) return SendClientMessage(playerid, 0xACACACFF, "Г‚ Г«Г®ГЄГ Г¶ГЁГЁ Г­ГҐГІ ГЎГ®Г«ГјГёГҐ Г¬ГҐГ±ГІ");
+	if(LocationInfo[playerid][lCreator] != playerid) return SendClientMessage(playerid, 0xACACACFF, !"Нет доступа");
+	if(Iter_Count(LocationPlayers[playerid]) >= MAX_LOCATION_PLAYERS) return SendClientMessage(playerid, 0xACACACFF, "В локации нет больше мест");
 
-	extract params -> new id; else return SendClientMessage(playerid, 0xFFFFFFFF, !"Г‚ГўГҐГ¤ГЁГІГҐ: /pinvite [id]");
+	extract params -> new id; else return SendClientMessage(playerid, 0xFFFFFFFF, !"Введите: /pinvite [id]");
 
-	if(!IsPlayerConnected(id)) return SendClientMessage(playerid, 0xACACACFF, !"Г€ГЈГ°Г®ГЄГ  Г­ГҐГІ Гў Г±ГҐГІГЁ.");
-	if(playerid == id) return SendClientMessage(playerid, 0xACACACFF, !"Г‚Г» ГіГЄГ Г§Г Г«ГЁ Г±ГўГ®Г© ID!");
-	if(PlayerInfo[id][pInvite]) return SendClientMessage(playerid, 0xACACACFF, !"Г“ ГЁГЈГ°Г®ГЄГ  ГіГ¦ГҐ Г®ГІГЄГ°Г»ГІГ  Г¤Г°ГіГЈГ Гї Г§Г ГїГўГЄГ ");
-	if(PlayerInfo[id][pLocation] != -1) return SendClientMessage(playerid, 0xACACACFF, !"Г€ГЈГ°Г®ГЄ Гў Г¤Г°ГіГЈГ®Г© Г«Г®ГЄГ Г¶ГЁГЁ");
+	if(!IsPlayerConnected(id)) return SendClientMessage(playerid, 0xACACACFF, !"Игрока нет в сети.");
+	if(playerid == id) return SendClientMessage(playerid, 0xACACACFF, !"Вы указали свой ID!");
+	if(PlayerInfo[id][pInvite]) return SendClientMessage(playerid, 0xACACACFF, !"У игрока уже открыта другая заявка");
+	if(PlayerInfo[id][pLocation] != -1) return SendClientMessage(playerid, 0xACACACFF, !"Игрок в другой локации");
 
 	{
-		static const fmt_msg[] = "%s {056D9A}ГЇГ°ГЁГЈГ«Г ГёГ ГҐГІ Г‚Г Г± ГЇГ®Г±ГІГ°ГҐГ«ГїГІГјГ±Гї Гў Г±ГўГ®ГҐГ© Г«Г®ГЄГ Г¶ГЁГЁ. ГЉГ ГЄ Г‚Г» Г­Г  ГЅГІГ® Г±Г¬Г®ГІГ°ГЁГІГҐ?"; 
+		static const fmt_msg[] = "%s {056D9A}приглашает Вас постреляться в своей локации. Как Вы на это смотрите?"; 
 		new message[sizeof fmt_msg + MAX_PLAYER_NAME - 3], name[MAX_PLAYER_NAME-3];
 		GetPlayerName(playerid, name, sizeof name);
 
 		format(message, sizeof message, fmt_msg, name);
 		SendClientMessage(id, 0xFFFFFFFF, message);
-		SendClientMessage(id, 0xFFFFFFFF, !"{4ABB05}""Y"" - Г±Г®ГЈГ«Г Г±ГЁГІГјГ±Гї. {F3051E}""N"" - Г®ГІГЄГ Г§Г ГІГјГ±Гї");
+		SendClientMessage(id, 0xFFFFFFFF, !"{4ABB05}""Y"" - согласиться. {F3051E}""N"" - отказаться");
 	}
 
 	PlayerInfo[id][pInvite] = true;
 	PlayerInfo[id][pInviteSender] = playerid;
 
-	return SendClientMessage(playerid, 0x027D0EFF, !"ГЏГ°ГЁГЈГ«Г ГёГҐГ­ГЁГҐ ГіГ±ГЇГҐГёГ­Г® Г®ГІГЇГ°Г ГўГ«ГҐГ­Г®! ГЋГ¦ГЁГ¤Г Г©ГІГҐ Г®ГІГўГҐГІГ ...");
+	PlayerInfo[id][pInviteTimer] = SetTimerEx("OnIgnoreInvitation", 1000 * 10, false, "d", id);
+
+	return SendClientMessage(playerid, 0x027D0EFF, !"Приглашение успешно отправлено! Ожидайте ответа...");
 }
 
 CMD:pkick(playerid, params[])
 {
-	if(LocationInfo[playerid][lCreator] != playerid) return SendClientMessage(playerid, 0xACACACFF, !"ГЌГҐГІ Г¤Г®Г±ГІГіГЇГ ");
+	if(LocationInfo[playerid][lCreator] != playerid) return SendClientMessage(playerid, 0xACACACFF, !"Нет доступа");
 
-	extract params -> new id; else return SendClientMessage(playerid, 0xFFFFFFFF, !"Г‚ГўГҐГ¤ГЁГІГҐ: /pkick [id]");
+	extract params -> new id; else return SendClientMessage(playerid, 0xFFFFFFFF, !"Введите: /pkick [id]");
 
-	if(!IsPlayerConnected(id)) return SendClientMessage(playerid, 0xACACACFF, !"Г€ГЈГ°Г®ГЄГ  Г­ГҐГІ Гў Г±ГҐГІГЁ.");
-	if(playerid == id) return SendClientMessage(playerid, 0xACACACFF, !"Г‚Г» ГіГЄГ Г§Г Г«ГЁ Г±ГўГ®Г© ID!");
-	if(PlayerInfo[id][pLocation] != playerid) return SendClientMessage(playerid, 0xACACACFF, !"Г€ГЈГ°Г®ГЄ Г­ГҐ Г­Г ГµГ®Г¤ГЁГІГ±Гї Гў Г‚Г ГёГҐГ© Г«Г®ГЄГ Г¶ГЁГЁ");
+	if(!IsPlayerConnected(id)) return SendClientMessage(playerid, 0xACACACFF, !"Игрока нет в сети.");
+	if(playerid == id) return SendClientMessage(playerid, 0xACACACFF, !"Вы указали свой ID!");
+	if(PlayerInfo[id][pLocation] != playerid) return SendClientMessage(playerid, 0xACACACFF, !"Игрок не находится в Вашей локации");
 
 	Iter_Remove(LocationPlayers[PlayerInfo[id][pLocation]], playerid);
 	RemovePlayerAtLocation(id);
 
-	SendClientMessage(playerid, 0x027D0EFF, !"Г€ГЈГ°Г®ГЄ ГЁГ±ГЄГ«ГѕГ·ГҐГ­ ГЁГ§ Г«Г®ГЄГ Г¶ГЁГЁ.");
-	return SendClientMessage(id, 0xF90627FF, !"Г‘Г®Г§Г¤Г ГІГҐГ«Гј Г«Г®ГЄГ Г¶ГЁГЁ ГЁГ±ГЄГ«ГѕГ·ГЁГ« Г‚Г Г± ГЁГ§ Г«Г®ГЄГ Г¶ГЁГЁ");
+	SendClientMessage(playerid, 0x027D0EFF, !"Игрок исключен из локации.");
+	return SendClientMessage(id, 0xF90627FF, !"Создатель локации исключил Вас из локации");
 }
 
 /* ###################### Dialogs ########################### */
@@ -340,7 +348,7 @@ dtempl SelectMap(playerid)
 		strcat(body, "\n");
 	}
 
-	Dialog_Open(playerid, dfunc:SelectMap, DIALOG_STYLE_LIST, "Г‚Г»ГЎГ®Г° | {BC2C2C}ГЉГ Г°ГІГ ", body, "Г‚Г»ГЎГ°Г ГІГј", "ГЋГІГ¬ГҐГ­Г ");
+	Dialog_Open(playerid, dfunc:SelectMap, DIALOG_STYLE_LIST, "Выбор | {BC2C2C}Карта", body, "Выбрать", "Отмена");
 }
 
 dialog SelectMap(playerid, response, listitem)
@@ -351,7 +359,7 @@ dialog SelectMap(playerid, response, listitem)
 
 		{
 			new message[41];
-			format(message, sizeof message, "Г‚Г»ГЎГ°Г Г­Г  Г«Г®ГЄГ Г¶ГЁГї В— {FFFFFF}""%s""", MapNames[listitem]);
+			format(message, sizeof message, "Выбрана локация — {FFFFFF}""%s""", MapNames[listitem]);
 			SendClientMessage(playerid, 0x027D0EFF, message);
 		}
 
@@ -370,7 +378,7 @@ dtempl SelectWeapon(playerid)
 		strcat(body, "\n");
 	}
 
-	Dialog_Open(playerid, dfunc:SelectWeapon, DIALOG_STYLE_LIST, "Г‚Г»ГЎГ®Г° | {BC2C2C}ГЋГ°ГіГ¦ГЁГҐ", body, "Г‚Г»ГЎГ°Г ГІГј", "ГЌГ Г§Г Г¤");
+	Dialog_Open(playerid, dfunc:SelectWeapon, DIALOG_STYLE_LIST, "Выбор | {BC2C2C}Оружие", body, "Выбрать", "Назад");
 }
 
 dialog SelectWeapon(playerid, response, listitem)
@@ -379,7 +387,7 @@ dialog SelectWeapon(playerid, response, listitem)
 	{
 		{
 			new message[46];
-			format(message, sizeof message, "Г‚Г»ГЎГ°Г Г­ Г­Г ГЎГ®Г° В— {FFFFFF}%s", WeaponInfo[listitem][2]);
+			format(message, sizeof message, "Выбран набор — {FFFFFF}%s", WeaponInfo[listitem][2]);
 			SendClientMessage(playerid, 0x027D0EFF, message);
 		}
 
@@ -388,8 +396,8 @@ dialog SelectWeapon(playerid, response, listitem)
 		LocationInfo[playerid][lWorld] = playerid + INVALID_PLAYER_ID;
 		LocationInfo[playerid][lWeaponPackID] = listitem;
 
-		SendClientMessage(playerid, 0x027D0EFF, !"Г‹Г®ГЄГ Г¶ГЁГї ГіГ±ГЇГҐГёГ­Г® Г±Г®Г§Г¤Г Г­Г . ГЏГ°ГЁГЈГ«Г Г±ГЁГІГҐ Г¤Г°ГіГ§ГҐГ© ГЄГ®Г¬Г Г­Г¤Г®Г© {FFFFFF}""/pinvite"" {027D0E}ГЁГ«ГЁ Г№ГҐГ«ГЄГ­ГЁГІГҐ Г­Г  Г­ГЁГЄ Гў TAB");
-		SendClientMessage(playerid, 0xEEF90AFF, !"ГЏГ®ГЄГЁГ­ГіГІГј Г«Г®ГЄГ Г¶ГЁГѕ Г¬Г®Г¦Г­Г® ГЄГ®Г¬Г Г­Г¤Г®Г© {EEF90A}""/pexit"". {FFFFFF}Г…Г±Г«ГЁ ГЇГ®ГЄГЁГ­ГҐГІГҐ Г«Г®ГЄГ Г¶ГЁГѕ Г‚Г» - Г®Г­Г  ГЎГіГ¤ГҐГІ ГіГ¤Г Г«ГҐГ­Г  Г ГўГІГ®Г¬Г ГІГЁГ·ГҐГ±ГЄГЁ!");
+		SendClientMessage(playerid, 0x027D0EFF, !"Локация успешно создана. Пригласите друзей командой {FFFFFF}""/pinvite"" {027D0E}или щелкните на ник в TAB");
+		SendClientMessage(playerid, 0xEEF90AFF, !"Покинуть локацию можно командой {EEF90A}""/pexit"". {FFFFFF}Если покинете локацию Вы - она будет удалена автоматически!");
 
 		AddPlayerToLocation(playerid, playerid);
 	}
@@ -397,22 +405,22 @@ dialog SelectWeapon(playerid, response, listitem)
 }
 dtempl LeaveLocation(playerid)
 {
-	Dialog_Open(playerid, dfunc:LeaveLocation, DIALOG_STYLE_MSGBOX, !"Г‚Г»ГµГ®Г¤ | {BC2C2C}ГЏГ®Г¤ГІГўГҐГ°Г¦Г¤ГҐГ­ГЁГҐ", 
-	!"Г‚Г» ГІГ®Г·Г­Г® ГµГ®ГІГЁГІГҐ ГЇГ®ГЄГЁГ­ГіГІГј ГЁ {BC2C2C}ГіГ¤Г Г«ГЁГІГј Г«Г®ГЄГ Г¶ГЁГѕ?", !"Г„Г ", !"ГЌГҐГІ");
+	Dialog_Open(playerid, dfunc:LeaveLocation, DIALOG_STYLE_MSGBOX, !"Выход | {BC2C2C}Подтверждение", 
+	!"Вы точно хотите покинуть и {BC2C2C}удалить локацию?", !"Да", !"Нет");
 }
 dialog LeaveLocation(playerid, response)
 {
 	if(response)
 	{
-		DeleteLocation(playerid, "Г‹Г®ГЄГ Г¶ГЁГї ГЎГ»Г«Г  ГіГ¤Г Г«ГҐГ­Г  Г±Г®Г§Г¤Г ГІГҐГ«ГҐГ¬. Г‚Г±ГҐ ГЁГЈГ°Г®ГЄГЁ ГЎГ»Г«ГЁ ГЁГ±ГЄГ«ГѕГ·ГҐГ­Г»");
+		DeleteLocation(playerid, "Локация была удалена создателем. Все игроки были исключены");
 
-		SendClientMessage(playerid, 0x027D0EFF, !"Г‹Г®ГЄГ Г¶ГЁГї ГіГ±ГЇГҐГёГ­Г® ГЎГ»Г«Г  ГіГ¤Г Г«ГҐГ­Г . Г‚Г±ГҐ ГіГ·Г Г±ГІГ­ГЁГЄГЁ ГЎГ»Г«ГЁ ГЁГ±ГЄГ«ГѕГ·ГҐГ­Г»");
+		SendClientMessage(playerid, 0x027D0EFF, !"Локация успешно была удалена. Все участники были исключены");
 	}
 }
 
 dtempl OnClickDialog(playerid)
 {
-	Dialog_Open(playerid, dfunc:OnClickDialog, DIALOG_STYLE_LIST, !"Г„ГҐГ©Г±ГІГўГЁГҐ", !"ГЏГ°ГЁГЈГ«Г Г±ГЁГІГј Гў Г«Г®ГЄГ Г¶ГЁГѕ\nГ€Г±ГЄГ«ГѕГ·ГЁГІГј ГЁГ§ Г«Г®ГЄГ Г¶ГЁГЁ", !"Г‚Г»ГЎГ°Г ГІГј", !"ГЋГІГ¬ГҐГ­Г ");
+	Dialog_Open(playerid, dfunc:OnClickDialog, DIALOG_STYLE_LIST, !"Действие", !"Пригласить в локацию\nИсключить из локации", !"Выбрать", !"Отмена");
 }
 
 dialog OnClickDialog(playerid, response, listitem)
@@ -432,6 +440,24 @@ dialog OnClickDialog(playerid, response, listitem)
 }
 /* *************************************************** */
 
+forward OnIgnoreInviation(playerid);
+public OnIgnoreInviation(playerid)
+{
+	static const fmt_msg[] = "%s {BC2C2C}не отвечает на Ваше приглашение!";
+
+	new name[MAX_PLAYER_NAME - 3], message[sizeof fmt_msg + MAX_PLAYER_NAME - 3];
+
+	GetPlayerName(playerid, name, sizeof name);
+	format(message, sizeof message, fmt_msg, name);
+	SendClientMessage(PlayerInfo[playerid][pInviteSender], 0xFFFFFFFF, message);
+
+	PlayerInfo[playerid][pInvite] = false;
+	PlayerInfo[playerid][pInviteSender] = 
+	PlayerInfo[playerid][pInviteTimer] = -1;
+	return 1;
+}
+
+/* *************************************************** */
 stock RandomCoordinateToRect(Float:min_x, Float:min_y, Float:max_x, Float:max_y, &Float: posX, &Float: posY, &Float: posZ)
 {
 	do
